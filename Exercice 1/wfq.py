@@ -1,12 +1,18 @@
 import sys
 import os
 
+transmission_order_sequence = []
 
 def create_packets_list(lines):
     packets = []
+    packet_num = 1
     for line in lines:
         lst = line.replace('[', "").replace(']', "").strip().split(",")
-        packets.append([float(lst[0]), float(lst[1]), int(lst[2])])
+        packets.append([packet_num, float(lst[0]), float(lst[1]), int(lst[2])])
+        packet_num += 1
+
+    # Structure
+    # [Packet Num, Arrival time(float), Packet length(float), Flow / stream identifier(integer ≥ 1)]
     return packets
 
 
@@ -16,20 +22,46 @@ def read_file(file_name):
     return create_packets_list(lines)
 
 
-def wfq(packets, flows, flows_band, estimated_time_to_finish=0.0, recived_packets=[]):
+def search_first_packet_to_complete(packets):
+    if len(packets) == 0:
+        exit()
+    packet_to_complete = packets[0]
+    estimated_time = packet_to_complete[4]
+
+    for packet in packets:
+        if packet[4] < estimated_time:
+            estimated_time = packet[4]
+            packet_to_complete = packet
+    return packet_to_complete
+
+
+def wfq(packets, flows, flows_band, estimated_time_to_finish=0.0, received_packets=[]):
 
     # Estimated time to finish: Fi = max(F' , Ai ) + Pi · rj
 
+    packets_to_remove = []
     for packet in packets:
-        arrival_time = packet[0]
-        packet_length = packet[1]
-        flow = packet[2]
+        arrival_time = packet[1]
+        packet_length = packet[2]
+        flow = packet[3]
 
-        packet_estimated_time_to_finish = max(estimated_time_to_finish, arrival_time) + (packet_length * flows_band[flow - 1])
+        packet_estimated_time_to_finish = max(estimated_time_to_finish, arrival_time) + (packet_length * (100 / flows_band[flow - 1]))
         if arrival_time <= estimated_time_to_finish:
             # [Arrival time(float), Packet length(float), Flow / stream identifier(integer ≥ 1)], packet_estimated_time_to_finish
-            recived_packets.append(packet + [packet_estimated_time_to_finish])
-    print(recived_packets)
+            received_packets.append(packet + [packet_estimated_time_to_finish])
+            packets_to_remove.append(packet)
+
+    # Remove packets received from all packets list
+    packets = [packet for packet in packets if packet not in packets_to_remove]
+
+    packet = search_first_packet_to_complete(received_packets)
+    packet_length = packet[2]
+
+    transmission_order_sequence.append(packet[0])
+    received_packets.remove(packet)
+    print("WFQ Transmission sequence: ", transmission_order_sequence)
+
+    wfq(packets, flows, flows_band, estimated_time_to_finish= estimated_time_to_finish + packet_length, received_packets=received_packets)
 
 
 if __name__ == '__main__':
@@ -37,9 +69,16 @@ if __name__ == '__main__':
     # Test files strucutre:
     # [Arrival time(float), Packet length(float), Flow / stream identifier(integer ≥ 1)]
 
-    # Solutions
-    # Test 1 solution: [3, 2, 1, 4, 8, 5, 6, 7, 11, 12, 9, 10, 14, 15, 13]
-    # Test 2 solution: [3, 1, 9, 5, 8, 12, 13, 11, 15, 2, 10, 14, 6, 4, 7]
+    # Tests parameters
+    # Test 1 params: 4 25 50 12.5 12.5 Test1.txt
+    # Test 2 params: 4 50 12.5 25 12.5 Test2.txt
+    # Test 3 params: 4 25 50 12.5 12.5 Test3.txt
+
+
+
+    # Tests Solutions
+    # Test 1 solution: [3, 2, 1, 8, 6, 11, 12, 14, 9, 5, 13, 4, 10, 15, 7]
+    # Test 2 solution: [1, 10, 15, 17, 11, 20, 14, 12, 7, 21, 18, 6, 2, 24, 25, 13, 9, 16, {3,4,23}, {5,8,22}, 19]
     # Test 3 solution: [2, 9, 6, 10, 13, 8, 11, 15, 14, 5, 3, 1, 4, 7, 12]
 
     # Script params

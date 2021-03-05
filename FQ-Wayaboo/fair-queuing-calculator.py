@@ -85,6 +85,8 @@ def weighted_fair_queuing(paquets, flow, temps_finalitzacio_segment=0, paquets_r
             paquets_rebuts.append(paquet+[temps_estimat])
 
     for paquete in paquets_rebuts:
+        print(paquete)
+        print("Pacos;", paquete[:-1])
         if paquete[:-1] in paquets:
             paquets.remove(paquete[:-1])
 
