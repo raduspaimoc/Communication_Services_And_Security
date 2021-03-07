@@ -17,6 +17,10 @@ buffer = []
 # Controls the next expected packet value
 next_expected = 0
 
+# UDP socket to transfer and receive data between TX and RX
+sockt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sockt.bind((HOST, PORT))
+
 
 def manage_buffer_process():
     # Responsible of:
@@ -86,11 +90,7 @@ def ack_process(data):
 
 
 if __name__ == '__main__':
-    global start_time, sockt, last_correct_recv
-
-    # UDP socket to transfer and receive data between TX and RX
-    sockt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sockt.bind((HOST, PORT))
+    #global start_time, sockt, last_correct_recv
 
     start_time = time.time()
     # Stores when the last package was received to fullfill system requirement of:

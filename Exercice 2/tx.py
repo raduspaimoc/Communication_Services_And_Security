@@ -1,9 +1,7 @@
 #!/usr/bin/python
-
-import socket
 import time
-import random
 import threading
+import tcp_proto as tcp
 
 NO_ERROR_MESSAGE = ''
 
@@ -33,7 +31,7 @@ last_ack = -1
 # Buffer containing written packages awaiting to be sent
 buffer = []
 # Retransmission buffer containg packages lost that will be resended
-ret_buffer =[]
+ret_buffer = []
 # List of all retransmission packages used for Karn/Partridge algorithm
 all_ret_buffer = []
 
@@ -58,24 +56,14 @@ cwmax = 4
 cwini = 1
 cwnd = cwini
 effective_window = cwnd
-rtt = 11 # Segment transmission time = 1 + timeout = 10
+rtt = 11  # Segment transmission time = 1 + timeout = 10
+srtt = rtt
+srtt = tcp.SRTT(alpha, srtt, rtt)
+start_time = time.time()
+current_time = time.time()
 
-
-def SRTT():
-    global alpha, srtt, rtt
-    # Calculates Estimated Round Trip Time (sRTT)
-    return alpha * srtt + (1 - alpha) * rtt
-
-
-def RTT(current_time, sent_at):
-    # Calculates Round Trip Time (RTT)
-    return current_time - sent_at
-
-
-def get_effective_window():
-    global cwnd, last_sent, last_ack
-    # Calculates Effective Window (cwnd)
-    return int(cwnd - (last_sent - last_ack))
+# Get sockets needed
+transfer_sock, receive_sock = tcp.create_sockets(HOST, PORT_ACK)
 
 
 def is_prime(num):
@@ -93,23 +81,23 @@ def is_prime(num):
 
 def create_output_file(output_file_name="log.txt"):
     header = "|Time (s)|Event|Eff.Win. (MSS)|cwnd (MSS)|RTT (s)|sRTT (s)|TOut (s)\n"
-    sub_header = "|--------|-----|--------------|----------|-------|--------|--------\n"
+    sub_header = "|--------|-----|--------------|----------|-------|--------|-------|\n"
     with open(output_file_name, mode='w', newline='\n') as file:
         file.write(header)
         file.write(sub_header)
         file.close()
 
 
-def add_log_to_output_file(t, log, effectiveWindow, cwnd, rtt, srtt, TOut, output_file_name="log.txt"):
+def add_log_to_output_file(t, log, effective_window, cwnd, rtt, srtt, timeout, output_file_name="log.txt"):
     # Adds values to log.txt in a table format
     with open(output_file_name, mode='a', newline='\n') as file:
         row = ("%.2f" % t)
         row += "|" + log
-        row += "|" + str(effectiveWindow)
+        row += "|" + str(effective_window)
         row += "|" + str(cwnd)
         row += "|" + ("%.2f" % rtt)
         row += "|" + ("%.2f" % srtt)
-        row += "|" + str(TOut)
+        row += "|" + str(timeout)
         row += "\n"
         file.write(row)
         file.close()
@@ -120,9 +108,9 @@ def print_message(info_message, error=False):
     global current_time, start_time
     current_time = time.time() - start_time
     if error:
-        print(current_time, '| ' + info_message)
+        print(str(round(current_time, 2)), ' | ', info_message)
     else:
-        print(current_time, '|', "'" + info_message + "'")
+        print(str(round(current_time, 2)), ' | ', info_message)
 
 
 def ack_process():
@@ -145,6 +133,8 @@ def ack_process():
         log = "ACK " + str(num) + " received"
         add_log_to_output_file(received_at, log, effective_window, cwnd, rtt, srtt, TIMEOUT)
 
+    print("ACK thread finished.")
+
 
 def update_tcp_metrics(ack_num, received_at):
     global cwnd, cwmax, MSS, rtt, srtt, TIMEOUT, effective_window, last_ack, packages, all_ret_buffer
@@ -155,9 +145,9 @@ def update_tcp_metrics(ack_num, received_at):
     if ack_num not in all_ret_buffer:
         for item in packages:
             if item['num'] == ack_num:
-                rtt = RTT(received_at, item["transmission_time"])
+                rtt = tcp.RTT(received_at, item["transmission_time"])
 
-        srtt = SRTT()
+        srtt = tcp.SRTT(alpha, srtt, rtt)
 
     # Updates Congestion Window
     if cwnd < cwmax:
@@ -173,14 +163,14 @@ def update_tcp_metrics(ack_num, received_at):
     last_ack = ack_num
 
     # Updates Effective Window
-    effective_window = get_effective_window()
+    effective_window = tcp.get_effective_window(cwnd, last_sent, last_ack)
 
 
 def send_package():
+    global running, buffer, last_sent, last_ack, packages, transfer_sock
     # Thread responsible of sending packages to the receiver
-    print("Send package thread started.")
 
-    global buffer, last_sent, last_ack, packages, transfer_sock
+    print("Send package thread started.")
 
     while running:
         if len(buffer) > EMPTY:
@@ -216,14 +206,17 @@ def send_package():
                 print_message('Sent: ' + datagram)
 
                 if error_log != NO_ERROR_MESSAGE:
-                    add_log_to_output_file((time.time() - start_time), error_log, effective_window, cwnd, rtt, srtt, TIMEOUT)
+                    add_log_to_output_file((time.time() - start_time),
+                                           error_log, effective_window, cwnd, rtt, srtt, TIMEOUT)
                     print_message(error_log, error=True)
 
                 # Creates thread responsible for taking care of possible timeout
                 start_threads(timeout_thread=True, num=num)
-                timeout_checker_thread = threading.Thread(target=timeout_checker(), args=(
+                timeout_checker_thread = threading.Thread(target=timeout_checker, args=(
                     num,), name="Thread-pck-" + str(num))
                 timeout_checker_thread.start()
+
+    print("Send package thread closed.")
 
 
 def timeout_checker(num):
@@ -278,40 +271,33 @@ def send_ret_packages():
 
 
 def plot_data():
-    global t_plot, srtt_plt, cwnd_plt
+    global t_plt, srtt_plt, cwnd_plt
     # Thread responsible of storing cwnd,  sRTT each second for plotting
     print("Plot data thread started.")
 
     while running:
-        t_plot.append(time.time() - start_time)
+        t_plt.append(time.time() - start_time)
         srtt_plt.append(srtt)
         cwnd_plt.append(cwnd)
         time.sleep(1)
 
-def start_threads(timeout_thread = False, num=0):
+
+def start_threads(timeout_thread=False, num=0):
     if timeout_thread:
         # Creates thread to check timeout of receiving acknowledgment
-        timeout_checker_thread = threading.Thread(target=timeout_checker(), args=(
+        timeout_checker_thread = threading.Thread(target=timeout_checker, args=(
             num,), name="Thread-pck-" + str(num))
         timeout_checker_thread.start()
     else:
         # Creates the list of threads
-        ack_process_thread = threading.Thread(target=ack_process())
-        send_package_thread = threading.Thread(target=send_package())
-        plot_data_thread = threading.Thread(target=plot_data())
+        ack_process_thread = threading.Thread(target=ack_process)
+        send_package_thread = threading.Thread(target=send_package)
+        plot_data_thread = threading.Thread(target=plot_data)
 
         # Starts list of threads
         ack_process_thread.start()
         send_package_thread.start()
         plot_data_thread.start()
-
-
-def create_sockets():
-    global transfer_sock, receive_sock
-    # UDP sockets to transfer and receive data between TX and RX
-    transfer_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    receive_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    receive_sock.bind((HOST, PORT_ACK))
 
 
 def send_buffer_process():
@@ -320,31 +306,27 @@ def send_buffer_process():
     # into packets to be send to rx
     global pack_count, buffer
     while EMPTY <= len(buffer) < MAX_SEND_BUFFER:
-        pack_count.append(pack_count)
+        buffer.append(pack_count)
         pack_count += 1
 
 
 if __name__ == '__main__':
-    global srtt, start_time
-    srtt = SRTT()
+    #global running
     create_output_file()
-    create_sockets()
     start_threads()
 
-    start_time = time.time()
-    current_time = time.time()
     while running:
         # Controls the program execution in function of the
         running = time.time() - start_time < LIMIT_TIME
         # Controls buffer
         send_buffer_process()
 
-    print("TIME: ", t_plot)
-    print("CWND: ", cwnd_plt)
-    print("SRTT: ", srtt_plt)
+    print_message("200s sequence completed.")
+    # print("TIME: ", t_plt)
+    # print("CWND: ", cwnd_plt)
+    # print("SRTT: ", srtt_plt)
 
 # Plots of cwnd and sRTT as a function of time
-#u.plot(timePlot, srttPlot, cwndPlot)
-#u.plot_cwnd(timePlot, cwndPlot)
-#u.plot_sRTT(timePlot, srttPlot)
-
+# u.plot(timePlot, srttPlot, cwndPlot)
+# u.plot_cwnd(timePlot, cwndPlot)
+# u.plot_sRTT(timePlot, srttPlot)
