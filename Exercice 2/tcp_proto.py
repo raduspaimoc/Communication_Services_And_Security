@@ -8,19 +8,19 @@ import socket
 # 3. Effective Window
 
 
-def SRTT(alpha, srtt, rtt):
+#def SRTT(alpha, srtt, rtt):
     # Calculates Estimated Round Trip Time (sRTT)
-    return alpha * srtt + (1 - alpha) * rtt
+#    return alpha * srtt + (1 - alpha) * rtt
 
 
-def RTT(current_time, sent_at):
+#def RTT(current_time, sent_at):
     # Calculates Round Trip Time (RTT)
-    return current_time - sent_at
+#    return current_time - sent_at
 
 
 def get_effective_window(cwnd, last_sent, last_ack):
     # Calculates Effective Window (cwnd)
-    return int(cwnd - (last_sent - last_ack))
+    return cwnd - (last_sent - last_ack)
 
 
 def create_sockets(host, port):
