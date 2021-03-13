@@ -3,10 +3,10 @@ import threading
 import time
 import utils as utl
 
+# Sketch values
 ACK_TIMEOUT = 2.0
 SEGMENTS_SEQUENCE = 3
 RECEIVER_BUFFER_SIZE = 10
-NO_ERROR = 0
 
 
 buffer = []
@@ -64,7 +64,12 @@ def check_sequence():
     global buffer
 
     next_seg = buffer[0]
-    next_seg, sequence = is_sequence(next_seg)
+    sequence = 0
+    #next_seg, sequence = is_sequence(next_seg)
+    for seg in buffer:
+        if seg == next_seg:
+            next_seg += 1
+            sequence += 1
 
     if sequence:
         send_ack(next_seg)
@@ -113,7 +118,7 @@ if __name__ == '__main__':
         error = int(data.split("-")[0])
         num = int(data.split("-")[1])
 
-        if error == NO_ERROR:
+        if error == utl.NO_ERROR:
             utl.print_trace(utl.SEGMENT_RECEIVED + str(num), start_time)
             new_expected = buffer_control(num)
 

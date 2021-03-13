@@ -1,18 +1,25 @@
 import time
-import socket
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# Shared values
 PORT = 50007
 PORT_ACK = 50008
 HOST = 'localhost'
+NO_ERROR = 0
 
-SEGMENT_RECEIVED = " SEGMENT RECEIVED \t| "
+# Info Strings
+ACK_RECEIVED_SHORT = "ACK RECEIVED"
+LAST_ACK = " LAST ACK: "
+SEGMENT_TIMEOUT = "______TIMEOUT. SEGMENT______: "
+ACK_RECEIVED = "______ACK RECEIVED______: "
+RETRANSMISSION_SENT = "______RETRANSMISSION SENDED______: "
+SEGMENT_RECEIVED = " SEGMENT RECEIVED      \t| "
 SEGMENT_EXPECTED = " NEXT SEGMENT EXPECTED \t| "
-SEGMENT_ERROR = " ERROR SEGMENT \t| "
-SEGMENT_SENDED = " SENDED ACK \t| "
-BUFFER = " BUFFER \t| "
-RX_TIMEOUT = " RX TIMEOUT \t| "
+SEGMENT_ERROR = " ERROR SEGMENT         \t| "
+SEGMENT_SENDED = " SENDED ACK            \t| "
+BUFFER = " BUFFER                \t| "
+RX_TIMEOUT = " RX TIMEOUT            \t| "
 ACK = 'ACK-'
 
 
@@ -32,15 +39,20 @@ def print_rtt_info(num_seg, rtt, srtt, timeout_time, start_time):
 
 def print_congestion_control_info(last_sent, last_ack, eff_win, cwnd, cwmax, start_time):
     print_trace("______Slow Start______", start_time)
-    print_trace("LAST_SENT: {0} LAST_ACK: {1} EFF.WIN: {2} Cwnd: {3} CWMAX: {4}".format(str(last_sent), str(last_ack),
-                                                                                        str(eff_win), str(cwnd), str(cwmax)), start_time)
+    print_trace("LAST_SENT: {0} LAST_ACK: {1} EFF.WIN: {2} CWND: {3} CWMAX: {4}".format(str(last_sent), str(last_ack),
+                                                                                        str(eff_win), str(cwnd),
+                                                                                        str(cwmax)), start_time)
 
-def print_sended_segment_info():
-    utl.print_trace("_______________SEND NUM_______________", start_time)
-    utl.print_trace("last_Sent: " + str(last_sent), start_time)
-    utl.print_trace("last_ACK: " + str(last_ack), start_time)
-    utl.print_trace("Eff_win: " + str(eff_win), start_time)
-    utl.print_trace("Timeout: " + str(timeout_time), start_time)
+
+def print_sent_segment_info(last_sent, last_ack, eff_win, cwnd, cwmax, timeout_time, start_time):
+    print_trace("______SEND NUM______", start_time)
+    print_trace("LAST_SENT: {0} LAST_ACK: {1} EFF.WIN: {2} CWND: {3} CWMAX: {4} TIMEOUT: {5}".format(str(last_sent),
+                                                                                                     str(last_ack),
+                                                                                                     str(eff_win),
+                                                                                                     str(cwnd),
+                                                                                                     str(cwmax),
+                                                                                                     str(("%.2f" % timeout_time))),
+                start_time)
 
 
 def write_output_table(output_table, start_time):
@@ -59,19 +71,18 @@ def write_output_table(output_table, start_time):
 
 
 def create_plot(df):
+    """
+       Creates plot with 2 lines:
+       1. x: 'Time (s)' -  cwnd (MSS)'
+       2. x: 'Time (s)' - 'RTT (s)'
+       ['Time (s)', 'Event', 'Eff.Win. (MSS)', 'cwnd (MSS)', 'RTT (s)', 'sRTT (s)', 'TOut (s)']
+       Also calls the plot generator function
+    """
     fig, ax = plt.subplots()
     ax.plot(df['Time (s)'], df['cwnd (MSS)'], label="Congestion Window (cwnd)")
     ax.plot(df['Time (s)'], df['sRTT (s)'], label="Estimated RTT (sRTT)")
     plt.xlabel('Time (s)')
     plt.title('CWND and sRTT as a function of time')
     plt.legend()
-    plt.xticks([1, 25, 50, 75, 100, 125, 150, 175, 200, 225])
+    plt.xticks([1, 25, 50, 75, 100, 125, 150, 175, 200])
     plt.savefig('CWND and sRTT (Script generated).jpg')
-
-
-def create_sockets(host, port):
-    # UDP sockets to transfer and receive data between TX and RX
-    transfer_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    receive_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    receive_sock.bind((host, port))
-    return transfer_sock, receive_sock

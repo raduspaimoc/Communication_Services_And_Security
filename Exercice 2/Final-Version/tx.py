@@ -5,7 +5,6 @@ import sympy
 import socket
 import utils as utl
 
-
 # CONNECTION DURATION
 LIMIT_TIME = 200
 
@@ -14,24 +13,22 @@ ALPHA = 0.8
 CWMAX = 4
 MSS = 1
 
-EXECUTION_TIME = 200.0
-
 last_ack = -1
 last_sent = -1
-timeout_time = 10.0
-seg_t_time = 1.0
-retrans_buffer = []
 segment_num = 0
-
-sent_segments_times = {}
-
-RTT = 10.0
-sRTT = 10.0
+timeout_time = 10.0
+seg_transmission_time = 1.0
 
 cwini = MSS
 cwnd = MSS
 cwmax = CWMAX
 eff_win = cwnd
+
+RTT = 10.0
+sRTT = 10.0
+
+sent_segments_times = {}
+ret_buffer = []
 
 # Sequence control params
 start_time = time.time()
@@ -39,22 +36,142 @@ running = True
 
 # List of lists containing:
 # ['Time (s)', 'Event', 'Eff.Win. (MSS)', 'cwnd (MSS)', 'RTT (s)', 'sRTT (s)', 'TOut (s)']
-output_table = []
+table = []
 
 
-def update_output_table(event):
-    eff_win_csv = eff_win
-    if eff_win_csv < 0:
-        eff_win_csv = 0
+def update_table(event):
+    aux_ew = eff_win
+
+    # If effective window is negative we store it as 0.
+    if aux_ew < 0:
+        aux_ew = 0
 
     current_time = ("%.2f" % (time.time() - start_time))
-    output_table.append([current_time,
-                         event,
-                         eff_win_csv,
-                         cwnd,
-                         RTT,
-                         sRTT,
-                         timeout_time])
+    table.append([current_time,
+                 event,
+                 aux_ew,
+                 cwnd,
+                 RTT,
+                 sRTT,
+                 timeout_time])
+
+
+def retransmit_segment():
+    '''
+     1. Checks if exists segments in ret_buffer
+     2. Removes it from sent segments
+     3. Resends segment
+     4. Creates thread to check segment timeout
+    '''
+    global sent_segments_times
+
+    while len(ret_buffer) > 0:
+        ret_segment = ret_buffer[0]
+        del ret_buffer[0]
+
+
+        # Check needed
+        if ret_segment[1] in sent_segments_times:
+            del sent_segments_times[ret_segment[1]]
+
+        time.sleep(seg_transmission_time)
+
+        datagram = str(ret_segment[0]) + '-' + str(ret_segment[1])
+        transfer_sock.sendto(datagram.encode('utf-8'), (utl.HOST, utl.PORT))
+        utl.print_trace(utl.RETRANSMISSION_SENT + str(ret_segment), start_time)
+
+        time_out_checker_thread = threading.Thread(target=time_out_checker, args=(ret_segment,))
+        time_out_checker_thread.start()
+
+
+def time_out_checker(segment):
+    '''
+    :param segment: [error, segment_num]
+    1. Sleeps current timeout time
+    2. Resend segment if LAST ACK doesn't acknowledge the received segment
+    3. Updates slow_start metrics
+    '''
+    global ret_buffer, last_ack
+
+    time.sleep(timeout_time)
+
+    num = segment[1]
+
+    if num >= last_ack:
+        utl.print_trace(utl.SEGMENT_TIMEOUT + str(num) + utl.LAST_ACK + str(last_ack), start_time)
+
+        # Retransmissions aren't considered errors.
+        ret_buffer.append([utl.NO_ERROR, num])
+
+        retransmit_segment()
+        slow_start(True)
+
+
+def get_next_segment():
+    """
+    1. If current segment is prime return error.
+    2. Increases segment
+    3. Returns tuple [error, segment_num]
+    """
+    global segment_num
+
+    if sympy.isprime(segment_num):
+        error = 1
+    else:
+        error = 0
+
+    segment = [error, segment_num]
+    segment_num += 1
+    return segment
+
+
+def send_segment():
+    '''
+    1. Gets segment
+    2. Waits segment transmission time
+    3. Sends seg to RX
+    4. Updates effective window
+    5. Creates thread to check timeout
+    '''
+    global sent_segments_times, last_sent, eff_win, last_ack, timeout_time
+
+    is_error, num = get_next_segment()
+    datagram = str(is_error) + '-' + str(num)
+
+    time.sleep(seg_transmission_time)
+    transfer_sock.sendto(datagram.encode('utf-8'), (utl.HOST, utl.PORT))
+
+    last_sent = num
+    update_table("SEND SEGMENT")
+
+    sent_segments_times[num] = datetime.now()
+
+    eff_win = cwnd - (last_sent - last_ack)
+    utl.print_sent_segment_info(last_sent, last_ack, eff_win, cwnd, cwmax, timeout_time, start_time)
+
+    time_out_checker_thread = threading.Thread(target=time_out_checker, args=([is_error, num],))
+    time_out_checker_thread.start()
+
+
+def slow_start(time_out):
+    '''
+    :param time_out: True if a segment get a time out, false if it receive an ACK
+    Calculate the congestion window using the slow start algorithm.
+    '''
+    global cwini, cwmax, cwnd, eff_win, last_sent, last_ack
+    if time_out:
+        cwnd = cwini
+        cwmax = max(cwini, cwmax / 2)
+    else:
+        if cwnd < cwmax:
+            cwnd += MSS
+        else:
+            cwnd += MSS / cwnd
+            cwmax = min(CWMAX, cwnd)
+
+    eff_win = cwnd - (last_sent - last_ack)
+
+    utl.print_congestion_control_info(last_sent, last_ack, eff_win, cwnd, cwmax, start_time)
 
 
 def round_trip_time():
@@ -77,152 +194,48 @@ def round_trip_time():
             del sent_segments_times[num_seg]
 
 
-def calculate_slow_start(time_out):
-    '''
-    :param time_out: True if a segment get a time out, false if it receive an ACK
-    Calculate the congestion window using the slow start algorithm.
-    '''
-    global cwini, cwmax, cwnd, eff_win, last_sent, last_ack
-    if time_out:
-        cwnd = cwini
-        cwmax = max(cwini, cwmax / 2)
-    else:
-        if cwnd < cwmax:
-            cwnd += MSS
-        else:
-            cwnd += MSS / cwnd
-            cwmax = min(CWMAX, cwnd)
-
-    eff_win = cwnd - (last_sent - last_ack)
-
-    utl.print_congestion_control_info(last_sent, last_ack, eff_win, cwnd, cwmax, start_time)
-
-
 def process_ack():
     '''
-    When receive an ack bigger than last ack, calculate the rrt and applies the slow start algorithm to calculate the congestion windows
+    1. Gets ACK from RX
+    2. Applies the slow start algorithm to calculate the congestion windows
     '''
     global last_ack
-    while running:
+
+    utl.print_trace("Process ACK thread started.", start_time)
+    while True:
         data, addr = receive_sock.recvfrom(1024)
         data = data.decode('utf-8')
         num = int(data.split('-')[1])
-        update_output_table("ACK")
+        update_table(utl.ACK_RECEIVED_SHORT)
 
-        #num = int(data)
-        if num > (last_ack):
-            utl.print_trace("_____ACK RECEIVED_______: " + str(data), start_time)
+        # If received num is > than last_ack: Updates RTT and cwnd, cwmax
+        if num > last_ack:
+            utl.print_trace(utl.ACK_RECEIVED + str(data), start_time)
             last_ack = num
             round_trip_time()
-            calculate_slow_start(False)
-
-
-def send_retrans_buffer():
-    '''
-     Send the segments of the retransmission buffer
-    '''
-    global sent_segments_times
-
-    while len(retrans_buffer) > 0:
-        retrans_segment = retrans_buffer[0]
-        del retrans_buffer[0]
-        # Mesure RTT only when no retransmission
-
-        # Check needed
-        if retrans_segment[1] in sent_segments_times:
-            del sent_segments_times[retrans_segment[1]]
-
-        time.sleep(seg_t_time)
-
-        datagram = str(retrans_segment[0]) + '-' + str(retrans_segment[1])
-        transfer_sock.sendto(datagram.encode('utf-8'), (utl.HOST, utl.PORT))
-        utl.print_trace("_____RETRANSMISSION SENDED_____: " + str(retrans_segment), start_time)
-
-        t = threading.Thread(target=time_out, args=(retrans_segment,))
-        t.start()
-
-
-def time_out(segment):
-    '''
-    :param segment: [error, segment num]
-    Sleeps during the current time out, and resend the segment if the last ACK don't acknowledges that segment
-    '''
-    global retrans_buffer, last_ack
-
-    time.sleep(timeout_time)
-
-    num = segment[1]
-
-    if num >= last_ack:
-        utl.print_trace("_____Time out. SEG num_____: " + str(num) + " LAST ACK: " + str(last_ack), start_time)
-
-        retrans_buffer.append([0, num])  # Retrans is not error
-
-        send_retrans_buffer()
-        calculate_slow_start(True)
-
-
-def send_segment(segment):
-    '''
-    :param segment: [error, segment num]
-    Send a segment, recalculate the effective window and start a time out for that segment.
-    '''
-    global sent_segments_times, last_sent, eff_win, last_ack, timeout_time
-
-    num = segment[1]
-    #struct_segment = struct.pack('ii', segment[0], segment[1])  # error , segment num
-    datagram = str(segment[0]) + '-' + str(segment[1])
-
-    time.sleep(seg_t_time)
-    transfer_sock.sendto(datagram.encode('utf-8'), (utl.HOST, utl.PORT))
-
-    last_sent = num
-    update_output_table("SEND SEGMENT")
-
-    sent_segments_times[num] = datetime.now()
-
-    utl.print_trace("_______________SEND NUM_______________", start_time)
-    eff_win = cwnd - (last_sent - last_ack)
-    utl.print_trace("last_Sent: " + str(last_sent), start_time)
-    utl.print_trace("last_ACK: " + str(last_ack), start_time)
-    utl.print_trace("Eff_win: " + str(eff_win), start_time)
-    utl.print_trace("Timeout: " + str(timeout_time), start_time)
-
-    t = threading.Thread(target=time_out, args=(segment,))
-    t.start()
-
-
-def get_next_segment():
-    global segment_num
-
-    if sympy.isprime(segment_num):
-        error = 1
-    else:
-        error = 0
-
-    segment = [error, segment_num]
-    segment_num += 1
-    return segment
+            slow_start(False)
 
 
 if __name__ == '__main__':
     utl.print_trace("TX running", start_time)
 
-    #transfer_sock,  receive_sock = utl.create_sockets(utl.HOST, utl.PORT_ACK)
+    # UDP sockets to transfer and receive data between TX and RX.
     transfer_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     receive_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+    # Binds RX receptor socket.
     receive_sock.bind((utl.HOST, utl.PORT_ACK))
 
-    x = threading.Thread(target=process_ack)
-    x.start()
+    # Creates thread to process received ACK segments.
+    process_ack_thread = threading.Thread(target=process_ack)
+    process_ack_thread.start()
 
     while running:
         # Controls the program execution in function of the sequence limit time
         running = time.time() - start_time < LIMIT_TIME
 
         if eff_win > 0:
-            send_segment(get_next_segment())
+            send_segment()
 
     utl.print_trace("200s sequence completed.", start_time)
-    utl.write_output_table(output_table, start_time)
+    utl.write_output_table(table, start_time)
