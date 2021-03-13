@@ -4,6 +4,7 @@ import time
 import threading
 import sympy
 import tcp_proto as tcp
+from datetime import datetime
 
 NO_ERROR_MESSAGE = ''
 
@@ -39,7 +40,7 @@ buffer = []
 ret_buffer = []
 
 # List that stores packages sent & the time they were sent
-packages = []
+packages = {}
 
 # Variable used to count sequentially the packages
 pack_count = 0
@@ -49,8 +50,8 @@ t_plt = []
 srtt_plt = []
 cwnd_plt = []
 
-timeout_time = 0
-transmission_time = INTIAL_TIMEOUT
+timeout_time = INTIAL_TIMEOUT
+transmission_time = 1
 
 # Congestion control
 cwmax = 4
@@ -60,11 +61,19 @@ effective_window = cwnd
 rtt = 10.0
 srtt = 10.0
 
-#start_time = time.time()
+start_time = time.time()
 #current_time = time.time()
 
 # Get needed sockets
 transfer_sock, receive_sock = tcp.create_sockets(HOST, PORT_ACK)
+
+
+def get_pack_pos_by_num(num):
+    for i in range(len(packages)):
+        #packages.append({'num': num, 'transmission_time': sent_at})
+        if packages[i]['num'] == num:
+            return i
+    return -1
 
 
 def update_slow_start_metrics(timeout):
@@ -96,12 +105,12 @@ def get_rtt_and_srtt():
 
     # packages.append({'num': num, 'transmission_time': sent_at})
 
-    for index in range(len(packages)):
-        packet = packages[index]
-        if packet['num'] + 1 == last_ack:
+    for num, t in packages.items():
+        #packet = packages[index]
+        if num + 1 == last_ack:
 
             # Check total seconds
-            rtt = (time.time() - packet['transmission_time'])
+            rtt = (time.time() - t)
             srtt = ALPHA * srtt + (1 - ALPHA) * rtt
             timeout_time = 2 * srtt
 
@@ -111,8 +120,8 @@ def get_rtt_and_srtt():
             #print_trace("srtt: " + str(sRTT))
             #print_trace("timeout: " + str(timeout_time))
 
-        if packet['num'] + 1 <= last_ack:
-            del packages[index]
+        if num + 1 <= last_ack:
+            del packages[num]
 
 
 #def is_prime(num):
@@ -147,7 +156,7 @@ def add_log_to_output_file(t, log, output_file_name="log.txt"):
         row += "|" + str(cwnd)  + " \t"
         row += "|" + ("%.2f" % rtt)  + " \t"
         row += "|" + ("%.2f" % srtt)  + " \t"
-        row += "|" +  ("%.2f" % TIMEOUT)  + " \t"
+        row += "|" +  ("%.2f" % timeout_time)  + " \t"
         row += "\n"
         file.write(row)
         file.close()
@@ -155,7 +164,6 @@ def add_log_to_output_file(t, log, output_file_name="log.txt"):
 
 def print_message(info_message, error=False):
     # Shows info data on the terminal
-    global current_time, start_time
     current_time = time.time() - start_time
     if error:
         print(str(round(current_time, 2)), ' | ', info_message)
@@ -164,6 +172,7 @@ def print_message(info_message, error=False):
 
 
 def ack_process():
+    global last_ack
     '''
     When receive an ack bigger than last ack, calculate the rrt and applies the slow start algorithm to calculate the congestion windows
     '''
@@ -183,40 +192,41 @@ def ack_process():
             log = "ACK " + str(num) + " received"
             add_log_to_output_file(received_at, log)
 
+            last_ack = num
             get_rtt_and_srtt()
             update_slow_start_metrics(False)
 
     print("ACK thread finished.")
 
 
-def update_tcp_metrics(ack_num, received_at):
-    global srtt, rtt,  cwnd, cwmax, TIMEOUT, last_ack, effective_window
+#def update_tcp_metrics(ack_num, received_at):
+#    global srtt, rtt,  cwnd, cwmax, TIMEOUT, last_ack, effective_window
     # 1. Checks if it's not a retrans (Karn/Partridge algorithm)
     # 2. Finds the respective packet updating RRT depending on its sending and received times
     # 3. Updates SRTT value
 
-    if ack_num not in all_ret_buffer:
-        for item in packages:
-            if item['num'] == ack_num:
-                rtt = tcp.RTT(received_at, item["transmission_time"])
+#    if ack_num not in all_ret_buffer:
+#        for item in packages:
+#            if item['num'] == ack_num:
+#                rtt = tcp.RTT(received_at, item["transmission_time"])
 
-        srtt = tcp.SRTT(alpha, srtt, rtt)
+#        srtt = tcp.SRTT(alpha, srtt, rtt)
 
     # Updates Congestion Window
-    if cwnd < cwmax:
-        cwnd += MSS
-    else:
-        cwnd += MSS / cwnd
-        cwmax = min(cwmax, cwnd)
+#    if cwnd < cwmax:
+#        cwnd += MSS
+#    else:
+#        cwnd += MSS / cwnd
+#        cwmax = min(cwmax, cwnd)
 
     # Updates Time Out
-    TIMEOUT = 2 * srtt
+#    TIMEOUT = 2 * srtt
 
     # Updates last acknowledged package
-    last_ack = ack_num
+#    last_ack = ack_num
 
     # Updates Effective Window
-    effective_window = tcp.get_effective_window(cwnd, last_sent, last_ack)
+#    effective_window = tcp.get_effective_window(cwnd, last_sent, last_ack)
 
 
 def send_package(packet):
@@ -225,7 +235,7 @@ def send_package(packet):
        Send a segment, recalculate the effective window and start a time out for that segment.
        '''
 
-    global last_sent, last_ack, packages, timeout_time,  transfer_sock
+    global last_sent, last_ack, packages, timeout_time,  transfer_sock, effective_window
     # Thread responsible of sending packages to the receiver
 
     #print("Send package thread started.")
@@ -234,11 +244,13 @@ def send_package(packet):
     datagram = str(packet[0]) + '-' + str(num)
 
     time.sleep(transmission_time)
-    last_sent = num
     transfer_sock.sendto(datagram.encode(), (HOST, PORT))
+    last_sent = num
 
     sent_at = (time.time() - start_time)
-    packages.append({'num': num, 'transmission_time': sent_at})
+
+    packages[num] = datetime.now()
+    #packages.append({'num': num, 'transmission_time': sent_at})
 
     # Adds log to output file
     log = 'Datagram ' + str(num) + ' sent'
@@ -246,8 +258,11 @@ def send_package(packet):
     # Shows info on terminal
     print_message('Sent: ' + datagram)
 
+    t = threading.Thread(target=timeout_checker, args=(num,))
+    t.start()
+
     # Creates thread responsible for taking care of possible timeout
-    start_threads(timeout_thread=True, num=num)
+    #start_threads(timeout_thread=True, num=num)
 
     #timeout_checker_thread = threading.Thread(target=timeout_checker, args=(
     #    num,), name="Thread-pck-" + str(num))
@@ -307,55 +322,80 @@ def send_package(packet):
 # Pa hacer mañana
 def timeout_checker(num):
     # Thread created for each packet sent.
-    global cwnd, cwini, cwmax, last_ack, ret_buffer, all_ret_buffer
+    global last_ack, ret_buffer
 
     # Awaiting Timeout time
-    time.sleep(TIMEOUT)
+    time.sleep(timeout_time)
 
     # If timer is over and ack has not yet been received:
     # - updates congestion window values
     # - mark package to retransmission
     # - call appropriated function to deal with it
+
     if num >= last_ack:
-        cwnd = cwini
-        cwmax = max(cwini, (cwmax/2))
 
         ret_buffer.append(num)
-        all_ret_buffer.append(num)
         log = "TimeOut: " + str(num)
         print_message(log)
         add_log_to_output_file((time.time() - start_time), log)
 
         send_ret_packages()
+        update_slow_start_metrics(True)
 
 
 def send_ret_packages():
     # Function responsible of sending packages of the retransmission buffer
-    global TIMEOUT, effective_window
+    global packages
 
-    while len(ret_buffer) > 0:
+    while len(ret_buffer) > EMPTY:
+        num = ret_buffer[0]
+        datagram = '0-' + str(num)
+        del ret_buffer[0]
+
+        #pos = get_pack_pos_by_num(num)
+        #del packages[pos]
+        if num in packages.keys():
+            del packages[num]
+
+        time.sleep(transmission_time)
+
+        transfer_sock.sendto(datagram.encode(), (HOST, PORT))
+        print_message('Sent Retrans: ' + datagram)
+        log = 'Sent Retrans: ' + str(num)
+        add_log_to_output_file((time.time() - start_time), log)
+
+        #start_threads(timeout_thread=True, num=num)
+        t = threading.Thread(target=timeout_checker, args=(num,))
+        t.start()
+
+
+
+
+
+
+    # while len(ret_buffer) > 0:
         # Send a packet only if the effective window is larger than 0
-        if effective_window > 0:
+    #    if effective_window > 0:
 
             # Selects package to be retransmitted, create its datagram, remove it from the
             # Retransmition Buffer awaits the appropriate transmition time, resends the package
             # and finally add it to the sent packages list
-            if ret_buffer:
-                num = ret_buffer[0]
-                datagram = '0-'+str(num)
-                del ret_buffer[0]
+    #        if ret_buffer:
+    #            num = ret_buffer[0]
+    #            datagram = '0-'+str(num)
+    #            del ret_buffer[0]
 
-                time.sleep(transmission_time)
-                transfer_sock.sendto(datagram.encode(), (HOST, PORT))
+    #           time.sleep(transmission_time)
+    #            transfer_sock.sendto(datagram.encode(), (HOST, PORT))
 
-                sent_at = (time.time() - start_time)
-                packages.append({'num': num, 'transmission_time': sent_at})
+    #            sent_at = (time.time() - start_time)
+    #            packages.append({'num': num, 'transmission_time': sent_at})
 
                 # Timeout is doubled when packet is retransmitted
-                TIMEOUT *= 2
-                print_message('Sent Retrans: ' + datagram)
-                log = 'Sent Retrans: ' + str(num)
-                add_log_to_output_file((time.time() - start_time), log)
+    #            TIMEOUT *= 2
+    #            print_message('Sent Retrans: ' + datagram)
+    #            log = 'Sent Retrans: ' + str(num)
+    #            add_log_to_output_file((time.time() - start_time), log)
 
 
 def get_plot_data():
@@ -401,9 +441,12 @@ def start_threads(timeout_thread=False, num=0):
 
 def get_next_packet():
     global pack_count
-
+    error = 1 if sympy.isprime(pack_count) else 0
     pack_count += 1
-    return [1 if sympy.isprime(pack_count) else 0, pack_count]
+    return [error, pack_count]
+
+
+    #return [1 if sympy.isprime(pack_count) else 0, pack_count]
 
 
 def create_plot():
@@ -432,7 +475,8 @@ if __name__ == '__main__':
         running = time.time() - start_time < LIMIT_TIME
 
         # Send datagrams process
-        send_package(get_next_packet())
+        if effective_window > EMPTY:
+            send_package(get_next_packet())
 
         # Controls buffer
         #send_buffer_process()

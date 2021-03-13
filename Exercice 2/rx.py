@@ -19,6 +19,8 @@ buffer = []
 # Controls the next expected packet value
 next_expected = 0
 
+start_time = time.time()
+
 # UDP socket to transfer and receive data between TX and RX
 sockt = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sockt.bind((HOST, PORT))
@@ -78,7 +80,7 @@ def send_package(pack_num):
     # Code responsible of sending ACKs to TX
     datagram = 'ACK-'+str(pack_num)
     sockt.sendto(datagram.encode(), (HOST, PORT_ACK))
-    print_message("Sent ACK - ", )
+    print_message("Sent ACK - " + str(pack_num) )
 
 
  #def recv_ack():
@@ -135,7 +137,6 @@ def check_ack_timeout(next_expected_timeout):
 if __name__ == '__main__':
 
     print_message("RX script started.")
-    start_time = time.time()
     # Stores when the last package was received to fullfill system requirement of:
     # Send ACK after 1 s. without a correct reception
 
@@ -148,15 +149,15 @@ if __name__ == '__main__':
         num = int(data.split("-")[1])
 
         if error == 0:
-            print_message("| ACK received " + num)
+            print_message("ACK received " + str(num))
             new_expected = manage_buffer_process(num)
 
             if new_expected == num:
                 next_expected = new_expected
-                print_message("|NEXT NUM EXPECTED| " + str(next_expected))
+                print_message("NEXT NUM EXPECTED |" +  str(next_expected))
 
                 # Send ACK after 2s. without a correct reception
                 check_timeout_thread = threading.Thread(target=check_ack_timeout)
                 check_timeout_thread.start()
         else:
-            print_message("Error datagram " + num)
+            print_message("Error datagram " + str(num))
