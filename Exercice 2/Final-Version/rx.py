@@ -5,7 +5,7 @@ import utils as utl
 
 # Sketch values
 ACK_TIMEOUT = 2.0
-SEGMENTS_SEQUENCE = 3
+SEQUENCE_LENGTH = 3
 RECEIVER_BUFFER_SIZE = 10
 
 
@@ -41,21 +41,6 @@ def buffer_control(num):
             return check_sequence()
 
 
-def is_sequence(next_seg):
-    """
-    Checks if: 3 or more segments in sequence
-    Computes next expected segment
-    """
-    sequence = 0
-
-    for seg in buffer:
-        if seg == next_seg:
-            next_seg += 1
-            sequence += 1
-
-    return next_seg, sequence >= SEGMENTS_SEQUENCE
-
-
 def check_sequence():
     """
     Send ACK immediately when 3 or more segments in sequence
@@ -65,13 +50,13 @@ def check_sequence():
 
     next_seg = buffer[0]
     sequence = 0
-    #next_seg, sequence = is_sequence(next_seg)
+
     for seg in buffer:
         if seg == next_seg:
-            next_seg += 1
             sequence += 1
+            next_seg += 1
 
-    if sequence:
+    if sequence >= SEQUENCE_LENGTH:
         send_ack(next_seg)
         # Clear sequence in buffer
         buffer = buffer[sequence:]

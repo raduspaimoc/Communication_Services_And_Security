@@ -79,10 +79,11 @@ def create_plot(df):
        Also calls the plot generator function
     """
     fig, ax = plt.subplots()
-    ax.plot(df['Time (s)'], df['cwnd (MSS)'], label="Congestion Window (cwnd)")
-    ax.plot(df['Time (s)'], df['sRTT (s)'], label="Estimated RTT (sRTT)")
+    plt.figure(figsize=(12, 7))
+    plt.plot(df['Time (s)'], df['cwnd (MSS)'], linewidth=4, label="Congestion Window (cwnd)")
+    plt.plot(df['Time (s)'], df['sRTT (s)'], linewidth=4,
+             label="Estimate RTT (sRTT)")
     plt.xlabel('Time (s)')
-    plt.title('CWND and sRTT as a function of time')
+    plt.title('CWND and sRTT as a function of time', fontweight='bold')
     plt.legend()
-    plt.xticks([1, 25, 50, 75, 100, 125, 150, 175, 200])
-    plt.savefig('CWND and sRTT (Script generated).jpg')
+    plt.savefig('CWND and sRTT.jpg')

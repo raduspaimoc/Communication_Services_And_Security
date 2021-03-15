@@ -48,7 +48,7 @@ def update_table(event):
 
     current_time = ("%.2f" % (time.time() - start_time))
     table.append([current_time,
-                 event,
+                event,
                  aux_ew,
                  cwnd,
                  RTT,
@@ -186,7 +186,7 @@ def round_trip_time():
     for num_seg, init_time in list(sent_segments_times.items()):
         if num_seg + 1 == last_ack:
             RTT = (datetime.now() - init_time).total_seconds()
-            sRTT = ALPHA * sRTT + (1 - ALPHA) * RTT
+            sRTT = (ALPHA * sRTT) + ((1 - ALPHA) * RTT)
             timeout_time = 2 * sRTT
 
             utl.print_rtt_info(num_seg, RTT, sRTT, timeout_time, start_time)
