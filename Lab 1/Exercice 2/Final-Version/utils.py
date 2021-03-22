@@ -7,6 +7,7 @@ PORT = 50007
 PORT_ACK = 50008
 HOST = 'localhost'
 NO_ERROR = 0
+ZERO = 0
 
 # Info Strings
 ACK_RECEIVED_SHORT = "ACK RECEIVED"

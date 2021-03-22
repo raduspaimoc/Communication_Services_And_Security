@@ -48,7 +48,7 @@ def update_table(event):
 
     current_time = ("%.2f" % (time.time() - start_time))
     table.append([current_time,
-                event,
+                 event,
                  aux_ew,
                  cwnd,
                  RTT,
@@ -155,8 +155,8 @@ def send_segment():
 
 def slow_start(time_out):
     '''
-    :param time_out: True if a segment get a time out, false if it receive an ACK
-    Calculate the congestion window using the slow start algorithm.
+    :param time_out: Indicator: True if segment exceds timeout
+    Applies the slow start algorithm for computing the cwnd
     '''
     global cwini, cwmax, cwnd, eff_win, last_sent, last_ack
     if time_out:
@@ -234,7 +234,7 @@ if __name__ == '__main__':
         # Controls the program execution in function of the sequence limit time
         running = time.time() - start_time < LIMIT_TIME
 
-        if eff_win > 0:
+        if eff_win > utl.ZERO:
             send_segment()
 
     utl.print_trace("200s sequence completed.", start_time)
