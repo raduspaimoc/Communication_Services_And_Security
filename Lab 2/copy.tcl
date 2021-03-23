@@ -1,10 +1,8 @@
+# Scenario script
+# Authors:
+# Lluís Mas & Radu Spaimoc
 
-# https://www.tcl.tk/about/dos2unix.html
-# https://www.tcl.tk/about/language.html
-
-
-#file to store results
-#
+# Files to store trace and metrics
 set fname "ex2-trace" 
 set nf [open $fname.tr w]
 $ns trace-all $nf
@@ -20,21 +18,21 @@ proc finish {} {
 }
 
 # Procedure to record TCP times
-proc recordTCPTimes { } {
+proc record_tcp_times { } {
 	
 	global ns tcp_agents nff cbr_i
 	
 	set now [$ns now]
 	
     for { set index 0 }  { $index < [array size tcp_agents] }  { incr index } {
-        writeAgent $tcp_agents($index) $index $nff $now
+        write_agent_metrics $tcp_agents($index) $index $nff $now
     }
 
 	$ns at [expr $now+0.1] "recordTCPTimes"
 }
 
-# Logging multiple values
-proc writeAgent { tcp n nff now args } {
+# Procedure to recrod CWND metrics
+proc write_agent_metrics { tcp n nff now args } {
     set rtt  [expr [$tcp set rtt_]  * [$tcp set tcpTick_]]
     set srtt  [expr ([$tcp set srtt_] >> [$tcp set T_SRTT_BITS]) * [$tcp set tcpTick_]]
     set rttvar  [expr ([$tcp set rttvar_] >> [$tcp set T_RTTVAR_BITS]) * [$tcp set tcpTick_]]
@@ -43,10 +41,6 @@ proc writeAgent { tcp n nff now args } {
     set cwmax  [expr [$tcp set cwmax_]]
     puts $nff "$n $now $rtt $srtt $cwnd $cwmax [expr 0.5*($bo-1)]"
 }
-
-
-
-
 
 
 # Node 4: 3 Sinks, one for each tcp agent
@@ -80,7 +74,7 @@ for { set index 0 }  { $index < 20 }  { incr index 4 } {
 }
 
 
-$ns at 0.0 "recordTCPTimes"
+$ns at 0.0 "record_tcp_times"
 $ns at 20.0 "finish"
 
 $ns run

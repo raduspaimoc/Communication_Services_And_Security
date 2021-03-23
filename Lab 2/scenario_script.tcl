@@ -1,14 +1,6 @@
-# Creating scenario
-puts "      CBR2-TCP2     n2"
-puts "      Vegas          \\"
-puts "                      \\"
-puts "     CBR1-TCP1 n1 ---- n3 -----n4"
-puts "     Reno             /"
-puts "                     /"
-puts "     CBR0-TCP0    n0 "
-puts "     Tahoe"
-
-puts ""
+# Scenario script
+# Authors:
+# Lluís Mas & Radu Spaimoc
 
 # Simulator object creation
 set ns [new Simulator]
@@ -19,8 +11,18 @@ set tfile [open $outputfile.tr w]
 $ns trace-all $tfile
 set rfile [open $outputfile.rtt w]
 
-# Function to setup agents
-proc agentSetup { index } {
+# Prcedure to connect TCP node to sink
+proc node_to_sink { agent } {
+    global ns tcp_agents n rfile
+
+    set null($agent) [new Agent/TCPSink]
+    $ns attach-agent $n(4) $null($agent)
+    $ns connect $tcp_agents($agent) $null($agent)
+    $tcp_agents($agent) attach-trace $rfile
+}
+
+# Procedure to setup agents
+proc agent_setup { index } {
     global ns n tcp_agents cbr_i
 
     puts "Setting up tcp agent $index"
@@ -35,7 +37,7 @@ proc agentSetup { index } {
 }
 
 # Procedure to record TCP times
-proc recordTCPTimes { } {
+proc record_tcp_times { } {
 
 	global ns tcp_agents rfile cbr_i
 
@@ -45,7 +47,7 @@ proc recordTCPTimes { } {
         writeAgent $tcp_agents($index) $index $rfile $now
     }
 
-	$ns at [expr $now+0.1] "recordTCPTimes"
+	$ns at [expr $now+0.1] "record_tcp_times"
 }
 
 # Logging multiple values
@@ -70,6 +72,16 @@ proc finish {} {
 
 
 # Nodes creation
+#Create 4 nodes
+#
+#  n3
+#     \
+#      \
+#  n2--n3--------n4
+#      /
+#     /
+#  n1
+
 set n(0) [$ns node]
 set n(1) [$ns node]
 set n(2) [$ns node]
@@ -86,7 +98,7 @@ set cbr_i(0) [new Application/Traffic/CBR]
 set cbr_i(1) [new Application/Traffic/CBR]
 set cbr_i(2) [new Application/Traffic/CBR]
 
-# Link the nodes with duplex comms links
+# Duplex lines between nodes
 $ns duplex-link $n(2) $n(3) 5Mb 20ms DropTail
 $ns duplex-link $n(1) $n(3) 5Mb 20ms DropTail
 $ns duplex-link $n(0) $n(3) 5Mb 20ms DropTail
@@ -95,7 +107,7 @@ $ns duplex-link $n(3) $n(4) 1Mb 50ms DropTail
 # Node0 --->
 # Vars: CWMAX: 40 & tcpTick: 0.01
 for { set i 0 }  { $i < [array size tcp_agents] }  { incr i } {
-   agentSetup $i
+   agent_setup $i
 }
 
 # Node2 --->
@@ -111,12 +123,8 @@ $ns queue-limit $n(3) $n(4) 20
 # Node 4 --->
 # Connect TCP to sinks 1 foreach node
 for { set agent 0 }  { $agent < [array size tcp_agents] }  { incr agent } {
-    set null($agent) [new Agent/TCPSink]
-    $ns attach-agent $n(4) $null($agent)
-    $ns connect $tcp_agents($agent) $null($agent)
-    $tcp_agents($agent) attach-trace $rfile
+    node_to_sink $agent
 }
-
 
 # Implementing scenario CBR activity
 
@@ -145,10 +153,7 @@ for { set index 0 }  { $index < 20 }  { incr index } {
 }
 
 
-
-
-
-$ns at 0.0 "recordTCPTimes"
+$ns at 0.0 "record_tcp_times"
 $ns at 20.0 "finish"
 
 $ns run
