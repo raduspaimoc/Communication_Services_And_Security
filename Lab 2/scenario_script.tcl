@@ -44,14 +44,14 @@ proc record_tcp_times { } {
 	set now [$ns now]
 
     for { set index 0 }  { $index < [array size tcp_agents] }  { incr index } {
-        writeAgent $tcp_agents($index) $index $rfile $now
+        write_agent $tcp_agents($index) $index $rfile $now
     }
 
 	$ns at [expr $now+0.1] "record_tcp_times"
 }
 
 # Logging multiple values
-proc writeAgent { tcp n rfile now args } {
+proc write_agent { tcp n rfile now args } {
     set rtt  [expr [$tcp set rtt_]  * [$tcp set tcpTick_]]
     set srtt  [expr ([$tcp set srtt_] >> [$tcp set T_SRTT_BITS]) * [$tcp set tcpTick_]]
     set rttvar  [expr ([$tcp set rttvar_] >> [$tcp set T_RTTVAR_BITS]) * [$tcp set tcpTick_]]
