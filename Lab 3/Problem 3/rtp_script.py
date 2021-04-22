@@ -19,7 +19,7 @@ if __name__ == '__main__':
     pq_no_ping = compute_rtp_missed_packets('q4_pq_without_ping.txt')
     no_pq_no_ping = compute_rtp_missed_packets('q4_no_pq_without_ping.txt')
     pq_ping =  compute_rtp_missed_packets('q5_pq_with_ping.txt')
-    no_pq_ping = compute_rtp_missed_packets('q5_np_pq_with_ping.txt')
+    no_pq_ping = compute_rtp_missed_packets('q5_no_pq_with_ping.txt')
 
     print("PQ - No Ping. RTP missed packets: ", pq_no_ping)
     print("NO PQ - No Ping. RTP missed packets: ", no_pq_no_ping)
