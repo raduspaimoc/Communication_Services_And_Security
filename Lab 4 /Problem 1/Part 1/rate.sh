@@ -35,5 +35,5 @@ function rate(){
 }
 
 rate "1000000_400000_400000.pcapng" "avg_1000.csv"
-rate "800000_4000_4000.pcapng" "avg_800.csv"
+rate "800000_400000_400000.pcapng" "avg_800.csv"
 rate "no_shapping.pcapng" "avg_no_shapping.csv"
